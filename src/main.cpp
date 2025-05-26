@@ -5,28 +5,12 @@
 *  Copyright (c) 2025 awawa-dev
 *
 *  https://github.com/awawa-dev/HyperSerialESP32
-*
-*  Permission is hereby granted, free of charge, to any person obtaining a copy
-*  of this software and associated documentation files (the "Software"), to deal
-*  in the Software without restriction, including without limitation the rights
-*  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-*  copies of the Software, and to permit persons to whom the Software is
-*  furnished to do so, subject to the following conditions:
-*
-*  The above copyright notice and this permission notice shall be included in all
-*  copies or substantial portions of the Software.
-
-*  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-*  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-*  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-*  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-*  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-*  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-*  SOFTWARE.
- */
+*/
 
 #include <Arduino.h>
 #include <NeoPixelBus.h>
+#include <WiFi.h>
+#include <WiFiManager.h>          // https://github.com/tzapu/WiFiManager
 
 #if !defined(ARDUINO_LOLIN_S2_MINI) && ESP_ARDUINO_VERSION_MAJOR == 2 && ESP_ARDUINO_VERSION_MINOR ==0 && ESP_ARDUINO_VERSION_PATCH <= 5
     #error "Arduino ESP32 versions 2.0.0-2.0.5 are unsupported."
@@ -168,10 +152,7 @@
 	#include "powercontrol.h"
 #endif
 
-
-
 #include "main.h"
-
 
 /**
  * @brief separete thread for handling incoming data using cyclic buffer
@@ -207,6 +188,22 @@ void setup()
 	Serial.begin(SERIALCOM_SPEED);
 	while (!Serial) continue;
 
+	// ======== WiFiManager Captive Portal Setup ========
+	WiFi.mode(WIFI_STA);
+	WiFiManager wifiManager;
+
+	// Uncomment to force config portal every boot:
+	// wifiManager.resetSettings();
+
+	if (!wifiManager.autoConnect("HyperSerialESP32_AP")) {
+		Serial.println("⚠️ Failed to connect to WiFi. Rebooting...");
+		delay(3000);
+		ESP.restart();
+	}
+	Serial.println("✅ WiFi connected.");
+	Serial.print("IP address: ");
+	Serial.println(WiFi.localIP());
+
 	#if defined(NEOPIXEL_RGBW) || defined(NEOPIXEL_RGB)
 		#ifdef NEOPIXEL_RGBW
 			#ifdef COLD_WHITE
@@ -218,14 +215,12 @@ void setup()
 	#endif
 
 	#if !defined(CONFIG_IDF_TARGET_ESP32S2)
-		// Display config
 		Serial.println(HELLO_MESSAGE);
 		#if defined(SECOND_SEGMENT_START_INDEX)
 			SerialPort.write("SECOND_SEGMENT_START_INDEX = ");
 			SerialPort.println(SECOND_SEGMENT_START_INDEX);
 		#endif
 
-		// Colorspace/Led type info
 		#if defined(NEOPIXEL_RGBW) || defined(NEOPIXEL_RGB)
 			#ifdef NEOPIXEL_RGBW
 				#ifdef COLD_WHITE
@@ -243,7 +238,6 @@ void setup()
 			Serial.println("SPI WS2801 (RBG).");
 		#endif
 
-		//Serial.flush();
 		delay(50);
 	#endif
 
@@ -255,11 +249,8 @@ void setup()
 
 	if (multicore)
 	{
-		// create a semaphore to synchronize threads
 		base.i2sXSemaphore = xSemaphoreCreateBinary();
 
-
-		// create new task for handling received serial data on core 0
 		xTaskCreatePinnedToCore(
 			processDataTask,
 			"processDataTask",
@@ -268,7 +259,7 @@ void setup()
 			5,
 			&base.processDataHandle,
 			0);
-		// serial handler on core 1
+
 		xTaskCreatePinnedToCore(
 			processSerialTask,
 			"processSerialTask",
@@ -288,4 +279,3 @@ void loop()
 		processData();
 	}
 }
-
